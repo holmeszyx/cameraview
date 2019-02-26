@@ -21,7 +21,7 @@ android {
     defaultConfig {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        testInstrumentationRunner 'android.support.test.runner.AndroidJUnitRunner'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     buildTypes {
         release {
@@ -36,18 +36,37 @@ android {
         main.java.srcDirs += 'src/main/api21'
         main.java.srcDirs += 'src/main/api23'
     }
+
+    libraryVariants.all { variant ->
+        if (variant.buildType.name == "release") {
+            variant.assembleProvider.get().doLast {
+                variant.outputs.each { out ->
+                    File file = out.outputFile
+                    // println file.absolutePath
+                    if (file != null && file.name.endsWith(".aar")) {
+                        copy {
+                            from file
+                            into file.parent
+                            rename { "camera-view-google.aar" }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 dependencies {
-    compile "com.android.support:support-annotations:$supportLibraryVersion"
-    compile "com.android.support:support-v4:$supportLibraryVersion"
+    implementation "androidx.annotation:annotation:1.0.1"
+    // implementation "androidx.legacy:legacy-support-v4:$supportLibraryVersion"
+    implementation "androidx.core:core:1.0.1"
 
     // Tests
-    testCompile 'junit:junit:4.12'
-    androidTestCompile('com.android.support.test:runner:0.5') {
+    testImplementation 'junit:junit:4.12'
+    androidTestImplementation('androidx.test:runner:1.1.0-alpha4') {
         exclude module: 'support-annotations'
     }
-    androidTestCompile('com.android.support.test.espresso:espresso-core:2.2.2') {
+    androidTestImplementation('androidx.test.espresso:espresso-core:3.1.0-alpha4') {
         exclude module: 'support-annotations'
     }
 }
