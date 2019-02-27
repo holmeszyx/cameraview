@@ -20,15 +20,25 @@ import android.view.View;
 
 import java.util.Set;
 
+import androidx.annotation.NonNull;
+
 abstract class CameraViewImpl {
 
     protected final Callback mCallback;
 
     protected final PreviewImpl mPreview;
 
+    protected ObtainSizesInterceptor mSizesInterceptor;
+
     CameraViewImpl(Callback callback, PreviewImpl preview) {
+        this(callback, preview, null);
+    }
+
+    CameraViewImpl(Callback callback, PreviewImpl preview, ObtainSizesInterceptor sizesInterceptor) {
         mCallback = callback;
         mPreview = preview;
+        mSizesInterceptor = sizesInterceptor;
+        checkSizeInterceptor();
     }
 
     View getView() {
@@ -77,6 +87,27 @@ abstract class CameraViewImpl {
 
         void onPictureTaken(byte[] data);
 
+    }
+
+    void setSizesInterceptor(ObtainSizesInterceptor interceptor) {
+        mSizesInterceptor = interceptor;
+        checkSizeInterceptor();
+    }
+
+    public ObtainSizesInterceptor getSizesInterceptor() {
+        return mSizesInterceptor;
+    }
+
+    /**
+     * make sure that size interceptor is not null
+     * @return if it's false, means the value is null, and make it to default.
+     */
+    protected boolean checkSizeInterceptor() {
+        if (mSizesInterceptor == null) {
+            mSizesInterceptor = new ObtainSizesInterceptor.DefaultPolicy();
+            return false;
+        }
+        return true;
     }
 
 }

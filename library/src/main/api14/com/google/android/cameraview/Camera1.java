@@ -20,7 +20,9 @@ import android.annotation.SuppressLint;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.os.Build;
+
 import androidx.collection.SparseArrayCompat;
+
 import android.view.SurfaceHolder;
 
 import java.io.IOException;
@@ -326,11 +328,46 @@ class Camera1 extends CameraViewImpl {
             mAspectRatio = chooseAspectRatio();
             sizes = mPreviewSizes.sizes(mAspectRatio);
         }
+        final ObtainSizesInterceptor sizesInterceptor = mSizesInterceptor;
         Size size = chooseOptimalSize(sizes);
+        sizesInterceptor.onPreviewSizeConfirmed(size);
+
+        SortedSet<Size> ratioMatchedPictureSizes = mPictureSizes.sizes(mAspectRatio);
 
         // Always re-apply camera parameters
         // Largest picture size in this ratio
-        final Size pictureSize = mPictureSizes.sizes(mAspectRatio).last();
+        // final Size pictureSize = ratioMatchedPictureSizes.last();   // old policy
+
+        Size pictureSize = null;
+
+        int desiredWidth = 0;
+        int desiredHeight = 0;
+        if (mPreview.isReady()) {
+            final int surfaceWidth = mPreview.getWidth();
+            final int surfaceHeight = mPreview.getHeight();
+            if (isLandscape(mDisplayOrientation)) {
+                desiredWidth = surfaceHeight;
+                desiredHeight = surfaceWidth;
+            } else {
+                desiredWidth = surfaceWidth;
+                desiredHeight = surfaceHeight;
+            }
+        }
+
+        for (Size picSize : ratioMatchedPictureSizes) {
+            boolean chosen = sizesInterceptor.filterPictureSize(desiredWidth, desiredHeight, picSize);
+            if (chosen) {
+                pictureSize = picSize;
+                break;
+            }
+        }
+
+        if (pictureSize == null) {
+            pictureSize = ratioMatchedPictureSizes.last();   // old policy
+        }
+
+        sizesInterceptor.onPictureSizeConfirmed(pictureSize);
+
         if (mShowingPreview) {
             mCamera.stopPreview();
         }
@@ -362,6 +399,17 @@ class Camera1 extends CameraViewImpl {
             desiredHeight = surfaceHeight;
         }
         Size result = null;
+
+        // first. considering the preview size with interceptor
+        final ObtainSizesInterceptor sizesInterceptor = mSizesInterceptor;
+        for (Size size : sizes) {
+            boolean chosen = sizesInterceptor.filterPreviewSize(desiredWidth, desiredHeight, size);
+            if (chosen) {
+                return size;
+            }
+        }
+        // if no result above.
+
         for (Size size : sizes) { // Iterate from small to large
             if (desiredWidth <= size.getWidth() && desiredHeight <= size.getHeight()) {
                 return size;
@@ -383,9 +431,9 @@ class Camera1 extends CameraViewImpl {
     /**
      * Calculate display orientation
      * https://developer.android.com/reference/android/hardware/Camera.html#setDisplayOrientation(int)
-     *
+     * <p>
      * This calculation is used for orienting the preview
-     *
+     * <p>
      * Note: This is not the same calculation as the camera rotation
      *
      * @param screenOrientationDegrees Screen orientation in degrees
@@ -401,10 +449,10 @@ class Camera1 extends CameraViewImpl {
 
     /**
      * Calculate camera rotation
-     *
+     * <p>
      * This calculation is applied to the output JPEG either via Exif Orientation tag
      * or by actually transforming the bitmap. (Determined by vendor camera API implementation)
-     *
+     * <p>
      * Note: This is not the same calculation as the display orientation
      *
      * @param screenOrientationDegrees Screen orientation in degrees

@@ -30,7 +30,6 @@ import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
-import androidx.annotation.NonNull;
 import android.util.Log;
 import android.util.SparseIntArray;
 import android.view.Surface;
@@ -39,6 +38,8 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.SortedSet;
+
+import androidx.annotation.NonNull;
 
 @SuppressWarnings("MissingPermission")
 @TargetApi(21)
@@ -447,8 +448,38 @@ class Camera2 extends CameraViewImpl {
         if (mImageReader != null) {
             mImageReader.close();
         }
-        Size largest = mPictureSizes.sizes(mAspectRatio).last();
-        mImageReader = ImageReader.newInstance(largest.getWidth(), largest.getHeight(),
+        final ObtainSizesInterceptor sizesInterceptor = mSizesInterceptor;
+        int surfaceLonger = 0;
+        int surfaceShorter = 0;
+        if (mPreview.isReady()) {
+            final int surfaceWidth = mPreview.getWidth();
+            final int surfaceHeight = mPreview.getHeight();
+            if (surfaceWidth < surfaceHeight) {
+                surfaceLonger = surfaceHeight;
+                surfaceShorter = surfaceWidth;
+            } else {
+                surfaceLonger = surfaceWidth;
+                surfaceShorter = surfaceHeight;
+            }
+        }
+
+        Size pictureSize = null;
+        SortedSet<Size> ratioMatchedPictureSizes = mPictureSizes.sizes(mAspectRatio);
+        for (Size picSize : ratioMatchedPictureSizes) {
+            boolean chosen = sizesInterceptor.filterPictureSize(surfaceLonger, surfaceShorter, picSize);
+            if (chosen) {
+                pictureSize = picSize;
+                break;
+            }
+        }
+
+        if (pictureSize == null) {
+            Size largest = ratioMatchedPictureSizes.last();
+            pictureSize = largest;
+        }
+        sizesInterceptor.onPictureSizeConfirmed(pictureSize);
+
+        mImageReader = ImageReader.newInstance(pictureSize.getWidth(), pictureSize.getHeight(),
                 ImageFormat.JPEG, /* maxImages */ 2);
         mImageReader.setOnImageAvailableListener(mOnImageAvailableListener, null);
     }
@@ -475,6 +506,9 @@ class Camera2 extends CameraViewImpl {
             return;
         }
         Size previewSize = chooseOptimalSize();
+        final ObtainSizesInterceptor sizesInterceptor = mSizesInterceptor;
+        sizesInterceptor.onPreviewSizeConfirmed(previewSize);
+
         mPreview.setBufferSize(previewSize.getWidth(), previewSize.getHeight());
         Surface surface = mPreview.getSurface();
         try {
@@ -504,6 +538,15 @@ class Camera2 extends CameraViewImpl {
             surfaceShorter = surfaceHeight;
         }
         SortedSet<Size> candidates = mPreviewSizes.sizes(mAspectRatio);
+
+        // first. considering the preview size with interceptor
+        final ObtainSizesInterceptor sizesInterceptor = mSizesInterceptor;
+        for (Size size : candidates) {
+            boolean chosen = sizesInterceptor.filterPreviewSize(surfaceLonger, surfaceHeight, size);
+            if (chosen) {
+                return size;
+            }
+        }
 
         // Pick the smallest of those big enough
         for (Size size : candidates) {
@@ -640,8 +683,8 @@ class Camera2 extends CameraViewImpl {
                     new CameraCaptureSession.CaptureCallback() {
                         @Override
                         public void onCaptureCompleted(@NonNull CameraCaptureSession session,
-                                @NonNull CaptureRequest request,
-                                @NonNull TotalCaptureResult result) {
+                                                       @NonNull CaptureRequest request,
+                                                       @NonNull TotalCaptureResult result) {
                             unlockFocus();
                         }
                     }, null);
@@ -695,13 +738,13 @@ class Camera2 extends CameraViewImpl {
 
         @Override
         public void onCaptureProgressed(@NonNull CameraCaptureSession session,
-                @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
+                                        @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
             process(partialResult);
         }
 
         @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session,
-                @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+                                       @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             process(result);
         }
 

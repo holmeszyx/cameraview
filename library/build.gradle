@@ -56,6 +56,24 @@ android {
     }
 }
 
+task javadoc(type: Javadoc) {
+    failOnError false
+    source = android.sourceSets.main.java.sourceFiles
+    classpath += project.files(android.getBootClasspath().join(File.pathSeparator))
+    classpath += configurations.compile
+}
+
+// build a jar with javadoc
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+    rename { "camera-view-google-javadoc.jar" }
+}
+
+artifacts {
+    archives javadocJar
+}
+
 dependencies {
     implementation "androidx.annotation:annotation:1.0.1"
     // implementation "androidx.legacy:legacy-support-v4:$supportLibraryVersion"
